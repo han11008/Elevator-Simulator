@@ -12,6 +12,6 @@ If error message of "Could not load the Qt platform plugin "xcb"..." occurs on L
 
 ## Usage
 ![name](https://github.com/han11008/Elevator-Simulator/blob/main/sample.png)
-Click button **Add Passenger** to input which floor the passenger is at and which floor he/she is going to.
+Click button **Add passenger** to input which floor the passenger is at and which floor he/she is going to.
 
 Then the computer will decide which elevator can be taken, you may check the movement of elevators by the values shown on the interface.
