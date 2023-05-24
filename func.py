@@ -21,6 +21,7 @@ class Elevator(object):
         self.target_floor = None
         self.moving_queue = Queue()
         self.running = True
+        self.moving = False
         self.name = name
         self.state = ElevatorState.STOP
 
@@ -28,11 +29,15 @@ class Elevator(object):
         return self.current_floor
     
     def move(self, current: int, floor: int):
+        if floor > 10 or floor < 1:
+            return
+        self.moving = True
         self.state = floor < self.current_floor
         while self.current_floor != floor:
             self.current_floor += -1 if self.state else 1
             # print(f'{self.name} @ {self.display_floor()}')
             sleep(1)
+        self.moving = False
 
 class Computer(object):
     def __init__(self):
@@ -51,8 +56,8 @@ class Computer(object):
     def check_waiting(self):
         if not self.waiting_queue.empty():
             if (
-                self.elevator1.target_floor is None and
-                self.elevator2.target_floor is None
+                self.elevator1.target_floor is None and self.elevator1.running and
+                self.elevator2.target_floor is None and self.elevator2.running
             ):
                 tid, psg_flr, tar = self.waiting_queue.get()
                 dist1 = abs(self.elevator1.display_floor() - psg_flr)
@@ -63,10 +68,10 @@ class Computer(object):
                     pick = self.elevator1
                 else:
                     pick = choice([self.elevator1, self.elevator2])
-            elif self.elevator1.target_floor is None:
+            elif self.elevator1.target_floor is None and self.elevator1.running:
                 pick = self.elevator1
                 tid, psg_flr, tar = self.waiting_queue.get()
-            elif self.elevator2.target_floor is None:
+            elif self.elevator2.target_floor is None and self.elevator2.running:
                 pick = self.elevator2
                 tid, psg_flr, tar = self.waiting_queue.get()
             else:
@@ -121,7 +126,9 @@ class Computer(object):
                     pick.target_floor = tar
             # Schedule the passenger to an idle elevator or wait
             else:
-                if self.elevator1.target_floor is None and self.elevator2.target_floor is None:
+                if (self.elevator1.target_floor is None and self.elevator1.running and
+                    self.elevator2.target_floor is None and self.elevator2.running
+                ):
                     dist1 = abs(self.elevator1.display_floor() - psg_flr)
                     dist2 = abs(self.elevator2.display_floor() - psg_flr)
                     if dist1 > dist2:
@@ -130,9 +137,9 @@ class Computer(object):
                         pick = self.elevator1
                     else:
                         pick = choice([self.elevator1, self.elevator2])
-                elif self.elevator1.target_floor is None:
+                elif self.elevator1.target_floor is None and self.elevator1.running:
                     pick = self.elevator1
-                elif self.elevator2.target_floor is None:
+                elif self.elevator2.target_floor is None and self.elevator2.running:
                     pick = self.elevator2
                 else:
                     self.waiting_queue.put((tid, psg_flr, tar))
@@ -151,6 +158,26 @@ class Computer(object):
             elif state[0] == PassengerState.TAKING and state[1].display_floor() == state[3]:
                 self.task_state[tid] = (PassengerState.ARRIVED, None, None, None)
                 # print(f'task {tid} arrived')
+    
+    def elv_to_maintain(self, n):
+        if n == 1:
+            self.elevator1.running = False
+            self.elevator1.target_floor = None
+            self.elv1_thread.join()
+        elif n == 2:
+            self.elevator2.running = False
+            self.elevator2.target_floor = None
+            self.elv2_thread.join()
+    
+    def elv_restart(self, n):
+        if n == 1:
+            self.elevator1.running = True
+            self.elv1_thread = Thread(target=self.elevator_move, args=[self.elevator1])
+            self.elv1_thread.start()
+        elif n == 2:
+            self.elevator2.running = True
+            self.elv2_thread = Thread(target=self.elevator_move, args=[self.elevator1])
+            self.elv2_thread.start()
         
     def clean_task_state(self):
         rm_keys = []

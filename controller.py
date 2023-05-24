@@ -4,6 +4,7 @@ from PySide2.QtCore import Signal
 
 from func import Elevator, Computer, PassengerState
 from threading import Thread
+import socket
 
 from main_window import Ui_MainWindow
 from pop_window import Ui_Form
@@ -25,6 +26,45 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.ui.elv2ShowFlr.setText(f'{formatFlr(self.com.elevator2.display_floor())}')
         self.task_monitor = Thread(target=self.update)
         self.task_monitor.start()
+        self.rmt_sock_thread = Thread(target=self.setupRemote)
+        self.rmt_sock_thread.daemon = True
+        self.rmt_sock_thread.start()
+
+    def setupRemote(self):
+        host, port = '127.0.0.1', 8000
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.sock.bind((host, port))
+            self.sock.listen(1)
+            self.conn, self.conn_addr = self.sock.accept()
+            self.rmt_thread = Thread(target=self.rcvCmd)
+            self.rmt_thread.start()
+        except socket.error:
+            print('Remote connection failed.')
+
+    def rcvCmd(self):
+        while self.com.running:
+            try:
+                msg = self.conn.recv(1024).decode()
+                if msg == 'stat':
+                    stat1 = (not self.com.elevator1.running) and (not self.com.elevator1.moving)
+                    stat2 = (not self.com.elevator2.running) and (not self.com.elevator1.moving)
+                    _ = self.conn.send(bytes(f'{stat1},{self.com.elevator1.display_floor()},{stat2},{self.com.elevator2.display_floor()}', 'utf-8'))
+                elif msg == 'stop1':
+                    self.com.elv_to_maintain(1)
+                elif msg == 'stop2':
+                    self.com.elv_to_maintain(2)
+                elif msg == 'restart1':
+                    self.com.elv_restart(1)
+                elif msg == 'restart2':
+                    self.com.elv_restart(2)
+            except:
+                break
+        if self.com.running:
+            self.rmt_sock_thread.join()
+            self.rmt_sock_thread = Thread(target=self.setupRemote)
+            self.rmt_sock_thread.daemon = True
+            self.rmt_sock_thread.start()
 
     def ctrlCom(self, info):
         _from, _to = info
@@ -47,6 +87,12 @@ class MainWindow_controller(QtWidgets.QMainWindow):
         self.com.running = False
         self.com_thread.join()
         self.task_monitor.join()
+        self.sock.close()
+        self.rmt_sock_thread.join()
+        try:
+            self.rmt_thread.join()
+        except:
+            pass
     
     def update(self):
         while self.com.running:
